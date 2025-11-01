@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Lip Sync Vote</title>
+    <!-- Tailwind CSS CDN --><script src="https://cdn.tailwindcss.com"></script>
+    <!-- FingerprintJS CDN for Device ID --><script src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs/dist/fp.min.js"></script>
+    <!-- Firebase SDKs --><script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, query, writeBatch, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global variables provided by the Canvas environment (these must be present when running in the Canvas)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? initialAuthToken : null;
+
+        if (Object.keys(firebaseConfig).length > 0) {
+            // Set up global Firebase variables
+            window.app = initializeApp(firebaseConfig);
+            window.db = getFirestore(window.app);
+            window.auth = getAuth(window.app);
+            setLogLevel('debug'); // Enable detailed Firebase logging
+
+            // Global authentication process: Sign in user anonymously
+            onAuthStateChanged(window.auth, (user) => {
+                if (user) {
+                    window.userId = user.uid;
+                    console.log("Firebase Auth Ready. User ID:", window.userId);
+                    // Start main application logic after auth is confirmed
+                    if (typeof window.initApp === 'function') {
+                        window.initApp();
+                    }
+                } else {
+                    console.log("No user signed in. Attempting anonymous sign-in.");
+                    signInAnonymously(window.auth).catch(error => console.error("Anonymous Sign-in failed:", error));
+                }
+            });
+
+            // Initial sign-in with custom token if available (for Canvas environment)
+            (async () => {
+                try {
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(window.auth, initialAuthToken);
+                        console.log("Signed in with custom token.");
+                    }
+                } catch (error) {
+                    console.error("Custom token sign-in failed:", error);
+                    // Fallback to anonymous sign-in if token fails
+                    signInAnonymously(window.auth).catch(error => console.error("Anonymous Fallback failed:", error));
+                }
+            })();
+
+            window.getVoteDocRef = (visitorId) => {
+                // Private data storage path: /artifacts/{appId}/users/{userId}/votes/{visitorId}
+                return doc(window.db, 'artifacts', appId, 'users', window.auth.currentUser.uid, 'votes', visitorId);
+            };
+
+            window.getResultsDocRef = () => {
+                // Public collection for results: /artifacts/{appId}/public/data/vote_counts/results_summary
+                return doc(window.db, 'artifacts', appId, 'public', 'data', 'vote_counts', 'results_summary');
+            };
+
+            window.getVotesCollectionRef = () => {
+                // Public collection for individual votes to be counted by the results listener
+                return collection(window.db, 'artifacts', appId, 'public', 'data', 'individual_votes');
+            };
+
+        } else {
+             console.error("Firebase config is missing or invalid. Application cannot run.");
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        /* Custom styles to achieve glass effect with Tailwind */
+        .glass-card {
+            background-color: rgba(0, 0, 0, 0.45);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-bottom-color: rgba(255, 255, 255, 0.03);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+            font-family: 'Inter', sans-serif;
+        }
+        .spinner {
+            border-top-color: #fff;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+
+<body class="bg-black text-white h-screen overflow-hidden flex flex-col items-center justify-center font-sans">
+    <video autoplay loop muted playsinline id="login-bg-video" class="fixed inset-0 w-full h-full object-cover z-[-10] opacity-80"></video>
+
+    <!-- LOGIN SCREEN --><div id="login-screen" class="fixed inset-0 flex items-center justify-center p-4">
+        <!-- EDITED: Increased max-width from max-w-sm to max-w-md, min-height, and padding from p-6 to p-8 --><div class="glass-card flex flex-col justify-between items-center text-center p-8 w-11/12 max-w-md rounded-3xl min-h-[440px] shadow-2xl transition-all duration-300">
+            <!-- EDITED: Increased max-width from max-w-[180px] to max-w-[240px] and margin bottom to mb-6 --><img class="w-full max-w-[240px] mb-6" src="https://i.imgur.com/EnuWGLA.png" alt="Lip Sync Vote Header">
+
+            <!-- EDITED: Increased text size from text-sm to text-base, margin bottom to mb-8, and max-width --><p id="location-error" class="text-white/70 text-base mb-8 max-w-sm transition-colors duration-300">
+                Location Access Is Required To Enable Voting
+            </p>
+
+            <!-- EDITED: Increased min-width, padding, and text size --><button id="location-btn" class="w-auto min-w-[180px] px-8 py-3 text-base tracking-tight bg-black border border-white/50 text-white rounded-xl shadow-lg hover:shadow-white/40 hover:bg-white/10 transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                <span>Begin Voting</span>
+            </button>
+
+            <!-- EDITED: Increased padding, text size, and max-width --><footer class="pt-6 text-white/70 text-sm flex flex-col items-center max-w-sm mt-6">
+                <!-- EDITED: Increased height from h-10 to h-12 and margin bottom to mb-3 --><img src="https://ik.imagekit.io/cabgcu/Untitled%20design-3.png?updatedAt=1761432550912" alt="Canyon Activities Board Logo" class="h-12 mb-3 object-contain">
+                <p>Follow Us At <b>@CABGCU</b> On Instagram</p>
+                <p id="user-id-display" class="mt-2 text-[0.65rem] opacity-50"></p>
+            </footer>
+        </div>
+    </div>
+
+    <!-- VOTING SCREEN --><div id="voting-screen" class="hidden fixed inset-0 flex items-center justify-center p-4">
+        <!-- MODIFIED: Added flex-col and max-h-[90vh] to make the card constrained and allow scrolling inside --><div class="glass-card w-11/12 max-w-md rounded-3xl p-6 text-center shadow-2xl flex flex-col max-h-[90vh]">
+            <img class="w-full max-w-[180px] mx-auto mb-4 flex-shrink-0" src="https://i.imgur.com/EnuWGLA.png" alt="Lip Sync Vote Header">
+            <!-- UPDATED: Title text class changed to plain white --><h3 class="text-2xl font-bold mb-6 text-white flex-shrink-0">
+                Vote For Your Favorite Lip Sync Team!
+            </h3>
+
+            <!-- UPDATED: Six performer cards with new names and IDs --><div id="performers-container" class="space-y-4 overflow-y-auto flex-1 pb-2">
+                
+                <!-- Performer 1: Below --><div class="performer-card bg-white/5 border border-white/10 p-4 rounded-xl cursor-pointer transition-all duration-200 hover:border-white/50" data-vote-id="option1">
+                    <img src="https://i.imgur.com/DIyK2zX.jpeg" alt="Performer Below" class="w-full aspect-video object-cover rounded-lg mb-2">
+                    <h4 class="m-0 text-lg font-semibold mb-0">Below</h4>
+                </div>
+
+                <!-- Performer 2: Deliverance (NEW IMAGE) --><div class="performer-card bg-white/5 border border-white/10 p-4 rounded-xl cursor-pointer transition-all duration-200 hover:border-white/50" data-vote-id="option2">
+                    <img src="https://i.imgur.com/s7Unz9r.jpeg" alt="Performer Deliverance" class="w-full aspect-video object-cover rounded-lg mb-2">
+                    <h4 class="m-0 text-lg font-semibold mb-0">Deliverance</h4>
+                </div>
+                
+                <!-- Performer 3: Mask Off (NEW IMAGE) --><div class="performer-card bg-white/5 border border-white/10 p-4 rounded-xl cursor-pointer transition-all duration-200 hover:border-white/50" data-vote-id="option3">
+                    <img src="https://i.imgur.com/x0BI8Mc.jpeg" alt="Performer Mask Off" class="w-full aspect-video object-cover rounded-lg mb-2">
+                    <h4 class="m-0 text-lg font-semibold mb-0">Mask Off</h4>
+                </div>
+
+                <!-- Performer 4: Metro Motion (IMAGE FOCAL POINT EDITED) --><div class="performer-card bg-white/5 border border-white/10 p-4 rounded-xl cursor-pointer transition-all duration-200 hover:border-white/50" data-vote-id="option4">
+                    <img src="https://i.imgur.com/4rG47gL.jpeg" alt="Performer Metro Motion" class="w-full aspect-video object-cover object-top rounded-lg mb-2">
+                    <h4 class="m-0 text-lg font-semibold mb-0">Metro Motion</h4>
+                </div>
+
+                <!-- Performer 5: Sin Games (NEW IMAGE) --><div class="performer-card bg-white/5 border border-white/10 p-4 rounded-xl cursor-pointer transition-all duration-200 hover:border-white/50" data-vote-id="option5">
+                    <img src="https://i.imgur.com/k75mMUz.jpeg" alt="Performer Sin Games" class="w-full aspect-video object-cover rounded-lg mb-2">
+                    <h4 class="m-0 text-lg font-semibold mb-0">Sin Games</h4>
+                </div>
+
+                <!-- Performer 6: Anonymity (NEW IMAGE) --><div class="performer-card bg-white/5 border border-white/10 p-4 rounded-xl cursor-pointer transition-all duration-200 hover:border-white/50" data-vote-id="option6">
+                    <img src="https://i.imgur.com/3dJQFeX.jpeg" alt="Performer Anonymity" class="w-full aspect-video object-cover rounded-lg mb-2">
+                    <h4 class="m-0 text-lg font-semibold mb-0">Anonymity</h4>
+                </div>
+
+            </div>
+            
+            <!-- NEW: Global Submit Button (Disabled until a selection is made) --><!-- UPDATED: Button styles copied from login screen's location-btn --><button id="submit-vote-btn" class="mt-6 w-full py-3 px-8 text-base tracking-tight bg-black border border-white/50 text-white rounded-xl shadow-lg hover:shadow-white/40 hover:bg-white/10 transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0" disabled>
+                Select a Performer to Vote
+            </button>
+        </div>
+    </div>
+
+    <!-- CONFIRMATION SCREEN --><div id="confirmation-screen" class="hidden fixed inset-0 flex items-center justify-center p-4">
+        <div class="glass-card w-11/12 max-w-sm rounded-3xl p-8 text-center shadow-2xl">
+            <!-- UPDATED: Text color uses custom pink --><h3 class="text-3xl font-bold text-[#C27A88] mb-4">
+                ✅ Vote Submitted!
+            </h3>
+            <p class="text-white/80 mb-6">
+                Thank you for participating! The results will update live below.
+            </p>
+            <!-- UPDATED: Button styles copied from login screen's location-btn --><button id="show-results-btn" class="w-full py-3 px-8 text-base tracking-tight bg-black border border-white/50 text-white rounded-xl shadow-lg hover:shadow-white/40 hover:bg-white/10 transition duration-200">
+                View Live Results
+            </button>
+        </div>
+    </div>
+
+    <!-- RESULTS SCREEN --><div id="results-screen" class="hidden fixed inset-0 flex items-center justify-center p-4">
+        <div class="glass-card w-11/12 max-w-xl rounded-3xl p-6 text-center shadow-2xl">
+            <!-- UPDATED: Gradient end color uses custom pink --><h3 class="text-2xl font-bold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-gold-400 to-[#C27A88]">
+                Live Voting Results
+            </h3>
+            <div id="results-list" class="space-y-4">
+                <!-- Results will be injected here --></div>
+            <p class="text-sm text-white/50 mt-6">
+                Refreshing in real-time as votes are cast.
+            </p>
+        </div>
+    </div>
+
+
+<script type="module">
+    // Re-declare window.initApp for the module scope
+    window.initApp = initApp;
+
+    // Configuration
+    const LOGIN_VIDEOS = ['https://i.imgur.com/Aqrg8yc.mp4'];
+    const VIDEO_SESSION_KEY = 'lastVideoIndex';
+    // Geofence for testing/example (Arizona)
+    const geofence = { minLat: 33.509539, maxLat: 33.679000, minLong: -112.256500, maxLong: -112.127604 };
+    let visitorId = null;
+    let hasVoted = false;
+    let selectedVoteId = null; // NEW: State to track selected performer
+
+    // DOM Elements
+    const loginScreen = document.getElementById('login-screen');
+    const votingScreen = document.getElementById('voting-screen');
+    const confirmScreen = document.getElementById('confirmation-screen');
+    const resultsScreen = document.getElementById('results-screen');
+    const locationError = document.getElementById('location-error');
+    const locationButton = document.getElementById('location-btn');
+    const resultsList = document.getElementById('results-list');
+    const showResultsButton = document.getElementById('show-results-btn');
+    const userIdDisplay = document.getElementById('user-id-display');
+    const performersContainer = document.getElementById('performers-container'); // NEW
+    const submitVoteButton = document.getElementById('submit-vote-btn'); // NEW
+
+    // --- Utility Functions ---
+
+    function setScreen(screenId) {
+        [loginScreen, votingScreen, confirmScreen, resultsScreen].forEach(el => {
+            el.classList.add('hidden');
+        });
+        document.getElementById(screenId).classList.remove('hidden');
+    }
+
+    function isInsideGeofence(lat, long) {
+        const { minLat, maxLat, minLong, maxLong } = geofence;
+        // Simple rectangular check
+        return (lat >= minLat && lat <= maxLat && long >= minLong && long <= maxLong);
+    }
+
+    function setLoginVideo() {
+        const videoEl = document.getElementById('login-bg-video');
+        if (!videoEl || LOGIN_VIDEOS.length === 0) return;
+        let lastIndex = sessionStorage.getItem(VIDEO_SESSION_KEY);
+        let nextIndex = (lastIndex === null) ? 0 : (parseInt(lastIndex, 10) + 1) % LOGIN_VIDEOS.length;
+        sessionStorage.setItem(VIDEO_SESSION_KEY, nextIndex);
+        videoEl.src = LOGIN_VIDEOS[nextIndex];
+        videoEl.load();
+    }
+
+    function setLoading(isLoading, message = 'Verifying your location...') {
+        locationButton.disabled = isLoading;
+        if (isLoading) {
+            locationButton.innerHTML = '<div class="spinner border-4 w-6 h-6 border-transparent rounded-full mx-auto"></div>';
+            locationError.textContent = message;
+            locationError.classList.remove('text-red-400', 'font-bold');
+            locationError.classList.add('text-white/70');
+        } else {
+            locationButton.innerHTML = '<span>Begin Voting</span>';
+        }
+    }
+
+    function showError(message) {
+        setLoading(false);
+        locationError.textContent = message;
+        locationError.classList.add('text-red-400', 'font-bold');
+    }
+
+    // --- NEW: Card Selection Handlers ---
+
+    function handleCardSelection(event) {
+        const card = event.target.closest('.performer-card');
+        if (!card) return;
+
+        const allCards = document.querySelectorAll('.performer-card');
+        const voteId = card.dataset.voteId;
+
+        // 1. Clear selection from all cards
+        allCards.forEach(c => {
+            // Reset classes to default state
+            c.classList.remove('border-white', 'border-4', 'ring-4', 'ring-white/50', 'bg-white/10');
+            c.classList.add('border-white/10', 'border');
+        });
+
+        // 2. Apply selection to the clicked card
+        // Use border-4 and ring-4 for the highlighted effect
+        card.classList.add('border-white', 'border-4', 'ring-4', 'ring-white/50', 'bg-white/10');
+        card.classList.remove('border-white/10', 'border'); // Remove default border
+
+        // 3. Update state and button
+        selectedVoteId = voteId;
+        submitVoteButton.disabled = false;
+        submitVoteButton.textContent = `Submit Vote for ${card.querySelector('h4').textContent}`;
+    }
+
+    async function handleSubmitVote() {
+        if (!selectedVoteId) {
+            showError("Please select a performer before submitting.");
+            return;
+        }
+        // Call the existing submitVote logic, passing the selected vote ID and the global button
+        await submitVote(selectedVoteId, submitVoteButton);
+    }
+
+    // --- Firebase/Voting Logic ---
+
+    async function checkExistingVote() {
+        if (!window.db || !visitorId) return false;
+
+        try {
+            const voteDocRef = window.getVoteDocRef(visitorId);
+            const docSnap = await getDoc(voteDocRef);
+            hasVoted = docSnap.exists();
+            return hasVoted;
+        } catch (e) {
+            console.error("Error checking vote status:", e);
+            return false;
+        }
+    }
+
+    async function submitVote(voteId, button) {
+        if (!window.db || !visitorId) {
+            showError('Service not ready. Try again.');
+            return;
+        }
+
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = 'Submitting...';
+
+        try {
+            // 1. Mark the user/device as voted in the private collection (one vote per visitorId)
+            const voteDocRef = window.getVoteDocRef(visitorId);
+            await setDoc(voteDocRef, {
+                voteId: voteId,
+                timestamp: Date.now(),
+                userId: window.userId
+            });
+
+            // Set the vote document in a public collection for easy counting/triggering
+            const individualVoteRef = doc(window.getVotesCollectionRef(), visitorId);
+             await setDoc(individualVoteRef, {
+                voteId: voteId,
+                timestamp: Date.now(),
+                userId: window.userId
+            });
+
+            setScreen('confirmation-screen');
+            hasVoted = true;
+
+        } catch (e) {
+            console.error("Vote submission failed:", e);
+            button.textContent = 'Vote Failed - Retry';
+            button.disabled = false;
+            locationError.textContent = 'Error saving vote. Check console.';
+            setScreen('login-screen');
+        }
+    }
+
+    function subscribeToResults() {
+        if (!window.db) return;
+
+        // Listen to the collection of individual votes
+        const q = query(window.getVotesCollectionRef());
+
+        onSnapshot(q, (snapshot) => {
+            // UPDATED: Initialize all six vote options
+            const voteCounts = { 'option1': 0, 'option2': 0, 'option3': 0, 'option4': 0, 'option5': 0, 'option6': 0 };
+            const votes = [];
+            snapshot.forEach((doc) => {
+                votes.push(doc.data());
+            });
+
+            // Manually tally the votes
+            votes.forEach(vote => {
+                if (vote.voteId in voteCounts) {
+                    voteCounts[vote.voteId]++;
+                }
+            });
+
+            renderResults(voteCounts);
+        }, (error) => {
+            console.error("Error subscribing to results:", error);
+            resultsList.innerHTML = '<p class="text-red-400">Failed to load results.</p>';
+        });
+    }
+
+    function renderResults(counts) {
+        const totalVotes = Object.values(counts).reduce((sum, count) => sum + count, 0);
+
+        // UPDATED: Define all six options with their new names
+        const options = [
+            { id: 'option1', name: 'Below', count: counts['option1'] || 0 },
+            { id: 'option2', name: 'Deliverance', count: counts['option2'] || 0 },
+            { id: 'option3', name: 'Mask Off', count: counts['option3'] || 0 },
+            { id: 'option4', name: 'Metro Motion', count: counts['option4'] || 0 },
+            { id: 'option5', name: 'Sin Games', count: counts['option5'] || 0 },
+            { id: 'option6', name: 'Anonymity', count: counts['option6'] || 0 }
+        ];
+
+        resultsList.innerHTML = options.map(option => {
+            const percentage = totalVotes === 0 ? 0 : ((option.count / totalVotes) * 100);
+            const color = 'bg-[#C27A88]'; // Use the custom pink for the progress bar
+
+            return `
+                <div class="space-y-1">
+                    <div class="flex justify-between items-center text-sm">
+                        <span class="font-medium">${option.name}</span>
+                        <span class="font-bold">${option.count} Votes (${percentage.toFixed(1)}%)</span>
+                    </div>
+                    <div class="w-full h-3 bg-white/10 rounded-full overflow-hidden">
+                        <div class="h-full ${color} transition-all duration-500 ease-out rounded-full" style="width: ${percentage}%;"></div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // --- Main Initialization ---
+
+    function initApp() {
+        // Display the user ID for collaborative debugging/reference
+        if (window.userId) {
+            userIdDisplay.textContent = `User ID: ${window.userId}`;
+        }
+        
+        // 1. Get Device Fingerprint
+        FingerprintJS.load().then(fp => fp.get()).then(result => {
+            visitorId = result.visitorId;
+            console.log("Visitor ID:", visitorId);
+            // EDITED: Changed status message here
+            locationError.textContent = 'Location Access Needed To Submit Vote!';
+            locationButton.disabled = false;
+        }).catch(() => {
+            showError('Failed to load identity service.');
+        });
+
+        // 2. Attach Event Listeners
+        locationButton.addEventListener('click', handleLocationCheck);
+        
+        // NEW: Event listeners for card selection and submission
+        performersContainer.addEventListener('click', handleCardSelection);
+        submitVoteButton.addEventListener('click', handleSubmitVote);
+
+        showResultsButton.addEventListener('click', () => {
+            setScreen('results-screen');
+        });
+
+        // 3. Start real-time results listener
+        subscribeToResults();
+        setLoginVideo(); // Start the background video
+    }
+
+
+    async function handleLocationCheck() {
+        if (!navigator.geolocation) {
+            showError('Geolocation is not supported by your browser.');
+            return;
+        }
+
+        if (!visitorId) {
+            showError('Identity service is loading. Please wait.');
+            return;
+        }
+
+        setLoading(true, 'Verifying location and vote status...');
+
+        // Check if user has already voted
+        const alreadyVoted = await checkExistingVote();
+        if (alreadyVoted) {
+            setScreen('confirmation-screen'); // Send them to the confirmation/results screen
+            setLoading(false);
+            locationError.textContent = 'You have already cast your vote.';
+            return;
+        }
+
+        // Get current position
+        navigator.geolocation.getCurrentPosition(
+            geolocationSuccess,
+            geolocationError,
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 } // EDITED: Added maximumAge: 0 to ensure non-cached reading
+        );
+    }
+
+    function geolocationSuccess(position) {
+        const { latitude: lat, longitude: long } = position.coords;
+
+        if (isInsideGeofence(lat, long)) {
+            setLoading(false);
+            setScreen('voting-screen');
+        } else {
+            showError('You must be within the event area to vote.');
+        }
+    }
+
+    function geolocationError() {
+        showError('Please enable location access and try again.');
+    }
+
+    // If Firebase setup is complete (in the imported script), initApp will be called.
+    // If running outside the canvas environment, call it directly:
+    if (typeof window.app === 'undefined') {
+        // Mock init for local testing outside the Canvas environment
+        window.initApp = initApp;
+        window.initApp();
+    }
+
+</script>
+</body>
+</html>
