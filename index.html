@@ -59,7 +59,7 @@ const geofences = [
 ];
 
 /* ========= DOM Elements ========= */
-let locationError, locationButton, performersContainer, submitVoteButton, confirmationMessage, confirmationImage;
+let locationError, locationButton, performersContainer, submitVoteButton, confirmationMessage, confirmationImage, dots;
 
 document.addEventListener("DOMContentLoaded", () => {
   locationError = document.getElementById("location-error");
@@ -68,6 +68,16 @@ document.addEventListener("DOMContentLoaded", () => {
   submitVoteButton = document.getElementById("submit-vote-btn");
   confirmationMessage = document.getElementById("confirmation-message");
   confirmationImage = document.getElementById("confirmation-image");
+  dots = document.querySelectorAll(".dot");
+
+  // Move dots as user scrolls
+  performersContainer.addEventListener("scroll", () => {
+    const cards = document.querySelectorAll(".performer-card");
+    const scrollLeft = performersContainer.scrollLeft;
+    const cardWidth = cards[0].offsetWidth + 16; // include gap
+    const index = Math.round(scrollLeft / cardWidth);
+    dots.forEach((dot, i) => dot.classList.toggle("active", i === index));
+  });
 });
 
 function setScreen(id) {
@@ -253,12 +263,6 @@ html, body {
 }
 button.glow { animation: pink-green-glow 8s ease-in-out infinite; }
 
-.performer-card.selected {
-  border: 2px solid #22c55e;
-  box-shadow: 0 0 20px 3px rgba(34,197,94,0.5);
-  transform: scale(1.03);
-}
-
 #performers-container {
   display: flex;
   gap: 1rem;
@@ -268,28 +272,42 @@ button.glow { animation: pink-green-glow 8s ease-in-out infinite; }
   padding-bottom: 1rem;
 }
 .performer-card {
-  flex: 0 0 85%;
+  flex: 0 0 80%;
+  max-width: 80%;
   scroll-snap-align: center;
   transition: transform 0.3s ease;
+}
+@media (min-width: 768px) {
+  .performer-card { flex: 0 0 45%; max-width: 45%; }
 }
 .performer-card img {
   width: 100%;
   border-radius: 1rem;
 }
-#scroll-hint {
-  position: absolute;
-  bottom: 4rem;
-  left: 50%;
-  transform: translateX(-50%);
-  color: white;
-  opacity: 0.7;
-  font-size: 0.9rem;
-  animation: fadePulse 2s infinite;
+.performer-card.selected {
+  border: 2px solid #22c55e;
+  box-shadow: 0 0 20px 3px rgba(34,197,94,0.5);
+  transform: scale(1.02);
 }
-@keyframes fadePulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 1; }
+
+.dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 0.5rem;
 }
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.3);
+  transition: background 0.3s ease, transform 0.3s ease;
+}
+.dot.active {
+  background: #22c55e;
+  transform: scale(1.3);
+}
+
 #submit-vote-btn.ready {
   background-color: #22c55e !important;
   color: black !important;
@@ -332,7 +350,7 @@ button.glow { animation: pink-green-glow 8s ease-in-out infinite; }
   </div>
 </div>
 
-<!-- VOTING SCREEN: Horizontal Swipe -->
+<!-- VOTING SCREEN -->
 <div id="voting-screen" class="screen hidden text-center relative w-full">
   <img class="w-full max-w-[240px] mx-auto mb-4" src="https://i.imgur.com/EnuWGLA.png" alt="Header">
   <h3 class="text-2xl font-semibold mb-2">Vote For Your Favorite Lip Sync Team!</h3>
@@ -347,7 +365,14 @@ button.glow { animation: pink-green-glow 8s ease-in-out infinite; }
     <div class="performer-card bg-white/5 border border-white/10 p-4 rounded-xl cursor-pointer" data-vote-id="option6"><img src="https://i.imgur.com/3dJQFeX.jpeg"><h4 class="text-lg font-semibold mt-2">Anonymity</h4></div>
   </div>
 
-  <p id="scroll-hint">⬅️ Swipe to see more ➡️</p>
+  <div class="dots mt-2">
+    <div class="dot active"></div>
+    <div class="dot"></div>
+    <div class="dot"></div>
+    <div class="dot"></div>
+    <div class="dot"></div>
+    <div class="dot"></div>
+  </div>
 
   <button id="submit-vote-btn" class="mt-6 w-full max-w-md mx-auto py-3 px-8 text-base bg-black border border-white/50 text-white rounded-xl transition disabled:opacity-40" disabled>Select a Performer to Vote</button>
 </div>
