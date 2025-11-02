@@ -17,7 +17,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebas
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-/* Firebase Config */
+/* 🧩 Firebase Config */
 const firebaseConfig = {
   apiKey: "AIzaSyBoYf1_IhILJ96Y9KMcwrVjHMFLT5YEKuQ",
   authDomain: "lip-sync-2025.firebaseapp.com",
@@ -35,7 +35,7 @@ let selectedVoteName = "";
 let appInitialized = false;
 let votingEnabled = true;
 
-/* 🧭 THREE ACTIVE GEOFENCES */
+/* 🧭 Geofences */
 const geofences = [
   { minLat: 33.508268, maxLat: 33.511748, minLong: -112.130755, maxLong: -112.126984 },
   { minLat: 33.512279, maxLat: 33.512623, minLong: -112.130699, maxLong: -112.130440 },
@@ -44,6 +44,7 @@ const geofences = [
 
 let locationError, locationButton, performersContainer, submitVoteButton, confirmationMessage;
 
+/* 🔹 DOM Elements */
 document.addEventListener("DOMContentLoaded", () => {
   locationError = document.getElementById('location-error');
   locationButton = document.getElementById('location-btn');
@@ -83,7 +84,7 @@ function showError(msg) {
   locationError.classList.add('text-red-400', 'font-bold');
 }
 
-/* Handle performer card selection */
+/* 🔸 Card Selection */
 function handleCardSelection(e) {
   const card = e.target.closest('.performer-card');
   if (!card || !votingEnabled) return;
@@ -95,45 +96,33 @@ function handleCardSelection(e) {
   submitVoteButton.textContent = `Submit Vote for ${selectedVoteName}`;
 }
 
-/* Check if this user already has a Firestore vote */
+/* 🔸 Check for Existing Vote by Fingerprint */
 async function checkExistingVote() {
-  if (!userId) return false;
+  if (!visitorId) return false;
   try {
-    const snap = await getDoc(doc(db, 'lip_sync_2025_votes', userId));
+    const snap = await getDoc(doc(db, 'lip_sync_2025_votes', visitorId));
     return snap.exists();
   } catch {
     return false;
   }
 }
 
-/* Submit vote securely */
+/* 🔸 Submit Vote (fingerprint locked) */
 async function submitVote(voteId, btn) {
-  if (!userId) return showError('Signing in... please wait.');
+  if (!visitorId) return showError('Fingerprint not ready.');
   if (!votingEnabled) return showError('Voting is currently disabled.');
-
-  // 10-second cooldown AFTER first local vote
-  const votedOnce = localStorage.getItem('votedOnce');
-  const lastVote = localStorage.getItem('lastVoteTime');
-  if (votedOnce && lastVote && (Date.now() - parseInt(lastVote) < 10000)) {
-    showError('Please wait about 10 seconds before trying again.');
-    return;
-  }
 
   btn.disabled = true;
   btn.textContent = 'Submitting...';
 
   try {
-    await setDoc(doc(db, 'lip_sync_2025_votes', userId), {
+    await setDoc(doc(db, 'lip_sync_2025_votes', visitorId), {
       voteId,
       createdAt: Date.now(),
       userId,
-      fingerprint: visitorId || null,
+      fingerprint: visitorId,
       userAgent: navigator.userAgent
     });
-
-    // Mark local vote time
-    localStorage.setItem('votedOnce', 'true');
-    localStorage.setItem('lastVoteTime', Date.now().toString());
 
     confirmationMessage.textContent = `Your vote for ${selectedVoteName} has been counted. Thanks for joining Lip Sync: For Good!`;
     setScreen('confirmation-screen');
@@ -150,7 +139,7 @@ async function submitVote(voteId, btn) {
   }
 }
 
-/* Geolocation check */
+/* 🔸 Location Check */
 async function handleLocationCheck() {
   if (!navigator.geolocation) return showError('Your device does not support location access.');
   if (!votingEnabled) return showError('Voting is currently closed.');
@@ -185,7 +174,7 @@ async function handleLocationCheck() {
   );
 }
 
-/* Initialize app after authentication */
+/* 🔸 Initialize App */
 function initApp() {
   FingerprintJS.load()
     .then(fp => fp.get())
@@ -210,7 +199,7 @@ function initApp() {
   });
 }
 
-/* Firebase init */
+/* 🔸 Firebase Init */
 const app = initializeApp(firebaseConfig);
 db = getFirestore(app);
 auth = getAuth(app);
@@ -318,7 +307,7 @@ html, body {
   <div class="glass-card w-11/12 max-w-md rounded-3xl p-6 text-center shadow-2xl flex flex-col max-h-[90vh]">
     <img class="w-full max-w-[180px] mx-auto mb-4" src="https://i.imgur.com/EnuWGLA.png" alt="Header">
     <h3 class="text-xl font-semibold mb-2">Vote For Your Favorite Lip Sync Team!</h3>
-    <p class="text-white/70 text-sm mb-4">Each attendee may submit only one vote.</p>
+    <p class="text-white/70 text-sm mb-4">Each attendee may submit only one vote per device.</p>
 
     <div id="performers-container" class="space-y-4 flex-1">
       <div class="performer-card bg-white/5 border border-white/10 p-4 rounded-xl cursor-pointer hover:border-white/50" data-vote-id="option1"><img src="https://i.imgur.com/DIyK2zX.jpeg" class="w-full aspect-video object-cover rounded-lg mb-2"><h4 class="text-lg font-semibold">Below</h4></div>
