@@ -15,7 +15,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
 /* === Firebase Config === */
 const firebaseConfig = {
@@ -32,38 +32,50 @@ const firebaseConfig = {
 let db, auth, userId;
 let visitorId = null;
 let selectedVoteId = null;
+let selectedVoteName = "";
 let appInitialized = false;
+let votingEnabled = true;
 const geofence = { minLat: 33.509539, maxLat: 33.679000, minLong: -112.256500, maxLong: -112.127604 };
 
-/* === Firestore Paths === */
-function getVoteDocRef(visitorId) { return doc(db, 'lip_sync_2025_votes', visitorId); }
-function getVotesCollectionRef() { return collection(db, 'lip_sync_2025_votes'); }
+let loginScreen, votingScreen, confirmScreen;
+let locationError, locationButton, performersContainer, submitVoteButton, confirmationMessage;
 
-/* === UI === */
+/* === DOM Ready === */
+document.addEventListener("DOMContentLoaded", () => {
+  loginScreen = document.getElementById('login-screen');
+  votingScreen = document.getElementById('voting-screen');
+  confirmScreen = document.getElementById('confirmation-screen');
+  locationError = document.getElementById('location-error');
+  locationButton = document.getElementById('location-btn');
+  performersContainer = document.getElementById('performers-container');
+  submitVoteButton = document.getElementById('submit-vote-btn');
+  confirmationMessage = document.getElementById('confirmation-message');
+});
+
+/* === Helper Functions === */
 function setScreen(id) {
   document.querySelectorAll(".screen").forEach(el => el.classList.add('hidden'));
   document.getElementById(id).classList.remove('hidden');
 }
-
 function isInsideGeofence(lat, long) {
   const { minLat, maxLat, minLong, maxLong } = geofence;
   return (lat >= minLat && lat <= maxLat && long >= minLong && long <= maxLong);
 }
-
 function setLoading(isLoading, message = 'Verifying your location...') {
+  if (!locationButton) return;
   locationButton.disabled = isLoading;
   if (isLoading) {
     locationButton.classList.remove("glow");
-    locationButton.innerHTML = '<div class="spinner"></div>';
+    locationButton.innerHTML = '<div class="spinner mx-auto"></div>';
     locationError.textContent = message;
   } else {
     locationButton.classList.add("glow");
     locationButton.innerHTML = '<span>Begin Voting</span>';
   }
 }
-
 function showError(msg) {
   setLoading(false);
+  if (!locationError) return;
   locationError.textContent = msg;
   locationError.classList.add('text-red-400', 'font-bold');
 }
@@ -71,30 +83,33 @@ function showError(msg) {
 /* === Voting Logic === */
 function handleCardSelection(e) {
   const card = e.target.closest('.performer-card');
-  if (!card) return;
+  if (!card || !votingEnabled) return;
   document.querySelectorAll('.performer-card').forEach(c=>{
     c.classList.remove('border-white','border-4','ring-4','ring-white/50','bg-white/10');
     c.classList.add('border-white/10','border');
   });
   card.classList.add('border-white','border-4','ring-4','ring-white/50','bg-white/10');
   selectedVoteId = card.dataset.voteId;
+  selectedVoteName = card.querySelector('h4').textContent;
   submitVoteButton.disabled = false;
-  submitVoteButton.textContent = `Submit Vote for ${card.querySelector('h4').textContent}`;
+  submitVoteButton.textContent = `Submit Vote for ${selectedVoteName}`;
 }
 
 async function checkExistingVote() {
   try {
-    const snap = await getDoc(getVoteDocRef(visitorId));
+    const snap = await getDoc(doc(db, 'lip_sync_2025_votes', visitorId));
     return snap.exists();
   } catch { return false; }
 }
 
 async function submitVote(voteId, btn) {
   if (!visitorId) return showError('Identity not ready.');
+  if (!votingEnabled) return showError('Voting is currently disabled.');
   btn.disabled = true;
   btn.textContent = 'Submitting...';
   try {
-    await setDoc(getVoteDocRef(visitorId), { voteId, timestamp: Date.now(), userId });
+    await setDoc(doc(db, 'lip_sync_2025_votes', visitorId), { voteId, timestamp: Date.now(), userId });
+    confirmationMessage.textContent = `Thank you for voting! Your vote for ${selectedVoteName} has been counted! Thank you for attending Lip Sync: For Good!`;
     setScreen('confirmation-screen');
   } catch (e) {
     console.error(e);
@@ -104,31 +119,10 @@ async function submitVote(voteId, btn) {
   }
 }
 
-/* === Live Results === */
-function subscribeToResults() {
-  const q = query(getVotesCollectionRef());
-  onSnapshot(q, snap => {
-    const counts = {option1:0,option2:0,option3:0,option4:0,option5:0,option6:0};
-    snap.forEach(d=>{ if(d.data().voteId in counts) counts[d.data().voteId]++; });
-    renderResults(counts);
-  });
-}
-
-function renderResults(counts) {
-  const total = Object.values(counts).reduce((a,b)=>a+b,0);
-  const names=['Below','Deliverance','Mask Off','Metro Motion','Sin Games','Anonymity'];
-  resultsList.innerHTML = Object.keys(counts).map((id,i)=>{
-    const pct = total?((counts[id]/total)*100).toFixed(1):0;
-    return `<div class="space-y-1 text-white">
-      <div class="flex justify-between text-sm"><span>${names[i]}</span><span>${counts[id]} votes (${pct}%)</span></div>
-      <div class="w-full h-3 bg-white/10 rounded-full overflow-hidden"><div class="h-full bg-green-500" style="width:${pct}%"></div></div>
-    </div>`;
-  }).join('');
-}
-
-/* === Location === */
+/* === Location Check === */
 async function handleLocationCheck() {
   if (!navigator.geolocation) return showError('Geolocation not supported.');
+  if (!votingEnabled) return showError('Voting is currently disabled.');
   setLoading(true);
   if (await checkExistingVote()) { setScreen('confirmation-screen'); return showError('You have already voted.'); }
   navigator.geolocation.getCurrentPosition(pos=>{
@@ -146,36 +140,28 @@ function initApp() {
     locationButton.disabled=false;
     locationButton.classList.add("glow");
   }).catch(()=>showError('Identity failed.'));
+
   locationButton.addEventListener('click',handleLocationCheck);
   performersContainer.addEventListener('click',handleCardSelection);
   submitVoteButton.addEventListener('click',()=>submitVote(selectedVoteId,submitVoteButton));
-  showResultsButton.addEventListener('click',()=>setScreen('results-screen'));
-  subscribeToResults();
+
+  // Listen for voting enabled/disabled
+  const settingsRef = doc(db, 'lip_sync_2025_settings', 'state');
+  onSnapshot(settingsRef, (snap)=>{
+    if(snap.exists()){ votingEnabled = snap.data().enabled; }
+  });
 }
 
 /* === Firebase Init === */
 const app=initializeApp(firebaseConfig);
-db=getFirestore(app); auth=getAuth(app);
+db=getFirestore(app);
+auth=getAuth(app);
 onAuthStateChanged(auth,u=>{ if(u){ userId=u.uid; if(!appInitialized){ appInitialized=true; initApp(); } }});
 signInAnonymously(auth).catch(console.error);
-
-document.addEventListener('DOMContentLoaded',()=>{
-  loginScreen=document.getElementById('login-screen');
-  votingScreen=document.getElementById('voting-screen');
-  confirmScreen=document.getElementById('confirmation-screen');
-  resultsScreen=document.getElementById('results-screen');
-  locationError=document.getElementById('location-error');
-  locationButton=document.getElementById('location-btn');
-  resultsList=document.getElementById('results-list');
-  showResultsButton=document.getElementById('show-results-btn');
-  performersContainer=document.getElementById('performers-container');
-  submitVoteButton=document.getElementById('submit-vote-btn');
-});
 </script>
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-
 .glass-card {
   background-color: rgba(0,0,0,0.45);
   backdrop-filter: blur(24px);
@@ -184,30 +170,23 @@ document.addEventListener('DOMContentLoaded',()=>{
   box-shadow: 0 4px 6px rgba(0,0,0,0.2);
   font-family: 'Inter', sans-serif;
 }
-
 .spinner {
   border:3px solid rgba(255,255,255,0.15);
   border-top-color:#fff;
   border-radius:50%;
   width:22px;height:22px;
   animation:spin .9s linear infinite;
+  display:block;
+  margin:0 auto;
 }
 @keyframes spin{to{transform:rotate(360deg)}}
-
-#location-error{transition:opacity .3s ease,color .3s ease;min-height:3em;}
-#confirmation-message,#results-list{color:#fff!important;}
-#confirmation-screen h3{color:#fff!important;}
-
-/* Glow for Begin Voting (WHITE) */
-@keyframes glow-button {
-  0%,100% { box-shadow: 0 0 10px rgba(255,255,255,0.5); }
-  50% { box-shadow: 0 0 25px rgba(255,255,255,1); }
+@keyframes pink-green-glow {
+  0% { box-shadow: 0 0 15px 2px rgba(255,105,180,0.7); }
+  50% { box-shadow: 0 0 25px 5px rgba(96,163,77,0.9); }
+  100% { box-shadow: 0 0 15px 2px rgba(255,105,180,0.7); }
 }
-#location-btn.glow {
-  animation: glow-button 2s infinite;
-}
+#location-btn.glow { animation: pink-green-glow 5s ease-in-out infinite; }
 
-/* Background Video */
 #login-bg-video {
   position: fixed;
   top: 0; left: 0;
@@ -239,7 +218,9 @@ document.addEventListener('DOMContentLoaded',()=>{
 <div id="voting-screen" class="screen hidden fixed inset-0 flex items-center justify-center p-4">
   <div class="glass-card w-11/12 max-w-md rounded-3xl p-6 text-center shadow-2xl flex flex-col max-h-[90vh]">
     <img class="w-full max-w-[180px] mx-auto mb-4" src="https://i.imgur.com/EnuWGLA.png" alt="Header">
-    <h3 class="text-2xl font-bold mb-6">Vote For Your Favorite Lip Sync Team!</h3>
+    <h3 class="text-2xl font-bold mb-2">Vote For Your Favorite Lip Sync Team!</h3>
+    <p class="text-white/70 text-sm mb-4">Each attendee may submit only one vote.</p>
+
     <div id="performers-container" class="space-y-4 overflow-y-auto flex-1 pb-2">
       <div class="performer-card bg-white/5 border border-white/10 p-4 rounded-xl cursor-pointer hover:border-white/50" data-vote-id="option1"><img src="https://i.imgur.com/DIyK2zX.jpeg" class="w-full aspect-video object-cover rounded-lg mb-2"><h4 class="text-lg font-semibold">Below</h4></div>
       <div class="performer-card bg-white/5 border border-white/10 p-4 rounded-xl cursor-pointer hover:border-white/50" data-vote-id="option2"><img src="https://i.imgur.com/s7Unz9r.jpeg" class="w-full aspect-video object-cover rounded-lg mb-2"><h4 class="text-lg font-semibold">Deliverance</h4></div>
@@ -255,18 +236,8 @@ document.addEventListener('DOMContentLoaded',()=>{
 <!-- Confirmation Screen -->
 <div id="confirmation-screen" class="screen hidden fixed inset-0 flex items-center justify-center p-4">
   <div class="glass-card w-11/12 max-w-sm rounded-3xl p-8 text-center shadow-2xl">
-    <h3 class="text-3xl font-bold mb-4">✅ Vote Submitted!</h3>
-    <p id="confirmation-message" class="text-white text-base mb-6">Thank you for participating! The results will update live below.</p>
-    <button id="show-results-btn" class="w-full py-3 px-8 text-base bg-black border border-white/50 text-white rounded-xl">View Live Results</button>
-  </div>
-</div>
-
-<!-- Results Screen -->
-<div id="results-screen" class="screen hidden fixed inset-0 flex items-center justify-center p-4">
-  <div class="glass-card w-11/12 max-w-xl rounded-3xl p-6 text-center shadow-2xl">
-    <h3 class="text-2xl font-bold mb-6 text-white">Live Voting Results</h3>
-    <div id="results-list" class="space-y-4 text-white"></div>
-    <p class="text-sm text-white/70 mt-6">Refreshing in real-time as votes are cast.</p>
+    <h3 class="text-3xl font-bold mb-4 text-white">✅ Vote Submitted!</h3>
+    <p id="confirmation-message" class="text-white text-base mb-6">Thank you for voting! Your vote has been counted! Thank you for attending Lip Sync: For Good!</p>
   </div>
 </div>
 </body>
