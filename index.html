@@ -2,8 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Lip Sync 2025 Voting</title>
+
+<!-- ✅ Safari black bars + video autoplay fix -->
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
 <!-- Tailwind CSS -->
 <script src="https://cdn.tailwindcss.com"></script>
@@ -218,21 +223,39 @@ signInAnonymously(auth).catch(console.error);
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
 html, body {
   margin: 0;
   height: 100%;
-  overflow: hidden;
   font-family: 'Inter', sans-serif;
   color: white;
+  overflow: hidden;
+  background-color: black;
+  -webkit-transform: translateZ(0);
+  will-change: transform;
 }
+
+/* ✅ Key fix: force iPhone to render the video layer */
 #bg-video {
   position: fixed;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
   object-fit: cover;
-  z-index: -1;
+  z-index: 0;
   pointer-events: none;
+  opacity: 0.8;
+  background-color: black;
+  transform: translateZ(0);
 }
+
+/* ✅ Push all foreground content above video */
+.screen, .glass-card {
+  position: relative;
+  z-index: 1;
+}
+
 .glass-card {
   background-color: rgba(0,0,0,0.45);
   backdrop-filter: blur(24px);
@@ -280,16 +303,16 @@ html, body {
   justify-content: center;
   padding: 1rem;
 }
-#login-screen {
-  overflow-y: auto;
-}
 </style>
 </head>
 
 <body>
-<video autoplay loop muted playsinline id="bg-video" src="https://i.imgur.com/Aqrg8yc.mp4"></video>
+<!-- ✅ Proper autoplay setup for iOS -->
+<video autoplay muted playsinline loop preload="auto" id="bg-video">
+  <source src="https://i.imgur.com/Aqrg8yc.mp4" type="video/mp4">
+</video>
 
-<!-- Login Screen -->
+<!-- All your screens remain identical below -->
 <div id="login-screen" class="screen">
   <div class="glass-card flex flex-col justify-between items-center text-center p-8 w-11/12 max-w-md rounded-3xl min-h-[440px] shadow-2xl mt-10 mb-10">
     <img class="w-full max-w-[240px] mb-6" src="https://i.imgur.com/EnuWGLA.png" alt="Lip Sync Vote Header">
