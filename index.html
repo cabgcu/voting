@@ -123,8 +123,7 @@ async function submitVote(voteId, btn) {
 
     confirmationImage.src = selectedVoteImage;
     confirmationMessage.innerHTML = `
-      Submission Received!<br><br>
-      Your vote for <b>${selectedVoteName}</b> has been received.<br><br>
+      Your vote for <b>${selectedVoteName}</b> has been recorded.<br><br>
       Thank you for attending <b>Lip Sync: For Good!</b>
     `;
     setScreen('confirmation-screen');
@@ -314,7 +313,7 @@ button.glow {
 <!-- ✅ Confirmation Screen -->
 <div id="confirmation-screen" class="screen hidden">
   <div class="glass-card w-11/12 max-w-sm rounded-3xl p-8 text-center shadow-2xl">
-    <h3 class="text-3xl font-bold mb-4 text-white">✅ Submission Received!</h3>
+    <h3 class="text-3xl font-bold mb-4 text-white">✅ Submission Recorded!</h3>
     <img id="confirmation-image" class="w-full max-w-[240px] mx-auto rounded-xl mb-6" alt="Team Image">
     <p id="confirmation-message" class="text-white text-base mb-6"></p>
   </div>
