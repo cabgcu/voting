@@ -30,7 +30,7 @@ html.fonts-loaded { opacity: 1; }
 
 body {
   margin: 0;
-  min-height: 100%;
+  min-height: 100vh;
   font-family: 'Inter', sans-serif;
   color: white;
   background: black;
@@ -47,7 +47,7 @@ body {
   z-index: 0; opacity: 0.8;
 }
 
-/* Screens */
+/* Screen centering */
 .screen {
   position: fixed;
   inset: 0;
@@ -60,7 +60,7 @@ body {
 }
 .hidden { opacity: 0 !important; pointer-events: none; }
 
-/* Cards */
+/* Card styling */
 .glass-card {
   background: rgba(0,0,0,0.45);
   backdrop-filter: blur(20px);
@@ -134,29 +134,6 @@ button.glow { animation: pink-green-glow 6s ease-in-out infinite; }
 </head>
 
 <body>
-
-<!-- ✅ Centered Zoom Correction -->
-<script>
-window.addEventListener("DOMContentLoaded", () => {
-  const vp = window.visualViewport;
-  const scale = vp?.scale || 1;
-
-  if (scale > 1.05) {
-    const factor = 1 / scale;
-    document.body.style.transform = `scale(${factor})`;
-    document.body.style.transformOrigin = "top left";
-    document.body.style.width = `${scale * 100}%`;
-    document.body.style.height = `${scale * 100}%`;
-
-    // Recenter horizontally and vertically
-    const offsetX = (window.innerWidth - window.innerWidth * factor) / 2;
-    const offsetY = (window.innerHeight - window.innerHeight * factor) / 2;
-    document.body.style.position = "fixed";
-    document.body.style.left = `${offsetX}px`;
-    document.body.style.top = `${offsetY}px`;
-  }
-});
-</script>
 
 <video autoplay muted playsinline loop preload="auto" id="bg-video" poster="https://i.imgur.com/EnuWGLA.png">
   <source src="https://i.imgur.com/mAzP2S1.mp4" type="video/mp4">
@@ -239,7 +216,7 @@ import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gsta
 import { getFirestore, doc, setDoc, getDoc, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app-check.js";
 
-/* Your Firebase + app logic stays identical */
+/* ... your full Firebase logic from before remains unchanged ... */
 </script>
 </body>
 </html>
