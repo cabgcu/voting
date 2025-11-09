@@ -64,8 +64,9 @@ button.glow{animation:pink-green-glow 6s ease-in-out infinite;}
         <input type="number" id="student-id-input" placeholder="Enter Student ID"
           class="w-full p-3 rounded-lg bg-white/10 text-white border border-white/30 text-center mb-3 text-base"/>
         <button id="student-id-btn"
-          class="glow w-auto min-w-[180px] px-8 py-3 text-base text-white rounded-xl
-          border border-white/50 shadow-lg transition mb-4">Verify ID</button>
+          class="glow w-full p-3 text-base text-white rounded-lg border border-white/50 shadow-lg transition mb-4">
+          Verify ID
+        </button>
         <a href="#" id="show-location-mode"
            class="block text-sm text-white/60 underline mt-2 mb-4 py-2 hover:text-white/90">
           Can’t use Student ID? Vote with location instead.
@@ -180,7 +181,6 @@ async function restoreVoteIfExists(){
       setScreen("confirmation-screen");
       return;
     }
-
     if(deviceHash){
       const fSnap = await getDoc(doc(db,"voted_fingerprints",deviceHash));
       if(fSnap.exists()){
