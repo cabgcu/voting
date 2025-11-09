@@ -151,6 +151,8 @@ function setStudentIdLoading(isLoading, message = "Verifying your ID...") {
 
 /* ========= Restore Vote If Exists ========= */
 async function restoreVoteIfExists() {
+  // This function only runs on page load *after* fingerprint and auth.
+  // It checks if the *current session* has a vote.
   if (!userId || !db) return;
   
   try {
@@ -169,14 +171,52 @@ async function restoreVoteIfExists() {
         setScreen("confirmation-screen");
       }
     } else {
-        // No vote found, show the login screen
-        setScreen("login-screen");
+        // No vote found for this session, check if the *device* has voted
+        // This handles the case where the user cleared cache but already voted
+        await restoreVoteByFingerprint();
     }
   } catch (e) {
       console.error("Error restoring vote:", e);
       setScreen("login-screen"); // Fallback
   }
 }
+
+/* ========= NEW: Restore Vote By Fingerprint ========= */
+async function restoreVoteByFingerprint() {
+    if (!visitorId || !db) {
+        setScreen("login-screen"); // No fingerprint, proceed to login
+        return;
+    }
+    
+    try {
+        const fingerprintRef = doc(db, "voted_fingerprints", visitorId);
+        const snap = await getDoc(fingerprintRef);
+        
+        if (snap.exists()) {
+            // This device has voted! Show their vote.
+            const { voteId } = snap.data();
+             if (performerData[voteId]) {
+                const performer = performerData[voteId];
+                confirmationImage.src = performer.img;
+                confirmationImage.onerror = () => { confirmationImage.style.display = 'none'; };
+                confirmationMessage.innerHTML = `
+                  This device has already submitted a vote for <b>${performer.name}</b>.<br><br>
+                  Thank you for attending <b>Lip Sync: For Good!</b>
+                `;
+                setScreen("confirmation-screen");
+            } else {
+                 setScreen("login-screen"); // Vote data is weird, just login
+            }
+        } else {
+            // No vote found for device, show the login screen
+            setScreen("login-screen");
+        }
+    } catch (e) {
+        console.error("Error restoring vote by fingerprint:", e);
+        setScreen("login-screen"); // Fallback
+    }
+}
+
 
 /* ========= Card Selection ========= */
 function handleCardSelection(e) {
@@ -193,9 +233,9 @@ function handleCardSelection(e) {
   submitVoteButton.classList.add("ready");
 }
 
-/* ========= Submit Vote ========= */
+/* ========= Submit Vote (MODIFIED FOR LOCATION BUG FIX) ========= */
 async function submitVote(voteId, btn) {
-  if (!visitorId) return showError("Fingerprint not ready.");
+  if (!visitorId) return showError("Fingerprint not ready. Please wait a moment and retry.");
   if (!votingEnabled) return showError("Voting is currently disabled.");
   if (!userId) return showError("User not authenticated.");
 
@@ -203,7 +243,7 @@ async function submitVote(voteId, btn) {
   btn.textContent = "Submitting...";
 
   try {
-    // The document ID is the 'userId' to enforce one-vote-per-device-session
+    // The document ID for the vote log is still the 'userId'
     const voteRef = doc(db, "lip_sync_2025_votes", userId);
     
     const voteData = {
@@ -216,7 +256,7 @@ async function submitVote(voteId, btn) {
     };
 
     if (authMethod === 'student_id') {
-      // --- STUDENT ID VOTE (uses a Transaction) ---
+      // --- STUDENT ID VOTE (uses a Transaction, Unchanged) ---
       voteData.studentId = verifiedStudentId; 
       const studentIdRef = doc(db, "student_ids", verifiedStudentId);
 
@@ -229,8 +269,29 @@ async function submitVote(voteId, btn) {
       });
 
     } else {
-      // --- LOCATION VOTE (no transaction needed) ---
-      await setDoc(voteRef, voteData);
+      // --- LOCATION VOTE (NOW uses a Transaction to check fingerprint) ---
+      // This new collection will store fingerprints that have voted.
+      const fingerprintRef = doc(db, "voted_fingerprints", visitorId);
+
+      await runTransaction(db, async (transaction) => {
+        const fingerprintDoc = await transaction.get(fingerprintRef);
+        
+        if (fingerprintDoc.exists()) {
+          // This device has already voted.
+          // We'll throw a custom error with the original voteId
+          // so we can show them their vote confirmation.
+          const existingVoteId = fingerprintDoc.data().voteId || "option1"; // Fallback
+          throw new Error(`VOTED_ALREADY:${existingVoteId}`);
+        }
+        
+        // If fingerprint doesn't exist, record the vote and the fingerprint
+        transaction.set(voteRef, voteData);
+        transaction.set(fingerprintRef, { 
+            createdAt: voteData.createdAt, 
+            userId: userId, 
+            voteId: voteId // Store the voteId so we can retrieve it
+        });
+      });
     }
 
     // --- Show Confirmation (same for both) ---
@@ -246,9 +307,29 @@ async function submitVote(voteId, btn) {
   } catch (e) {
     btn.disabled = false;
     btn.textContent = "Vote Failed – Retry";
-    if (e.message.includes("already voted")) {
+
+    if (e.message.includes("VOTED_ALREADY:")) {
+        // --- This is our new custom error for location-based duplicate votes ---
+        const existingVoteId = e.message.split(":")[1];
+        if (performerData[existingVoteId]) {
+            // Show the confirmation for their *original* vote
+            const performer = performerData[existingVoteId];
+            confirmationImage.src = performer.img;
+            confirmationImage.onerror = () => { confirmationImage.style.display = 'none'; };
+            confirmationMessage.innerHTML = `
+              This device has already submitted a vote for <b>${performer.name}</b>.<br><br>
+              Thank you for attending <b>Lip Sync: For Good!</b>
+            `;
+            setScreen("confirmation-screen");
+        } else {
+            // Fallback just in case
+            showError("This device has already been used to vote.", 'location');
+        }
+    } else if (e.message.includes("This ID has already voted")) {
+        // This is the error from the Student ID check
         showError("This Student ID has already been used to vote.", 'student_id');
     } else {
+        // All other errors
         showError("Error saving vote: " + e.message, authMethod);
     }
     console.error("Submit Vote Error:", e);
@@ -311,25 +392,12 @@ async function handleStudentIdCheck() {
 }
 
 /* ========= Main App Initialization Logic (CLEANED) ========= */
-function initializeAppLogic() {
+async function initializeAppLogic() {
   if (appInitialized) return;
   appInitialized = true;
 
   console.log("Initializing App Logic...");
-
-  // Start FingerprintJS
-  FingerprintJS.load()
-    .then(fp => fp.get())
-    .then(r => {
-      visitorId = r.visitorId;
-      if (locationButton) {
-          locationButton.disabled = false;
-          locationButton.classList.add("glow");
-          locationButton.innerHTML = "<span>Begin Voting</span>";
-      }
-    })
-    .catch(() => showError("Unable to verify identity. Please refresh."));
-
+  
   // Attach all voting app listeners
   locationButton.addEventListener("click", handleLocationCheck);
   performersContainer.addEventListener("click", handleCardSelection);
@@ -353,20 +421,40 @@ function initializeAppLogic() {
     if (snap.exists()) votingEnabled = snap.data().enabled;
   });
 
-  // Handle Authentication
+  // Start FingerprintJS *first*
+  try {
+      const fp = await FingerprintJS.load();
+      const r = await fp.get();
+      visitorId = r.visitorId;
+      console.log("Fingerprint Visitor ID:", visitorId);
+      if (locationButton) {
+          locationButton.disabled = false;
+          locationButton.classList.add("glow");
+          locationButton.innerHTML = "<span>Begin Voting</span>";
+      }
+  } catch (e) {
+      console.error("Fingerprint error:", e);
+      showError("Unable to verify identity. Please refresh.");
+  }
+
+  // Handle Authentication *after* fingerprint
   onAuthStateChanged(auth, async (user) => {
     if (user) {
       // We only expect anonymous users
       console.log("Anonymous user signed in:", user.uid);
       userId = user.uid; // Set the global userId for voting
-      await restoreVoteIfExists(); // Check for existing vote
+      // Now that we have auth AND fingerprint, we can check for existing votes
+      await restoreVoteIfExists(); 
     } else {
       // No user, sign in anonymously
       console.log("No user. Signing in anonymously...");
-      signInAnonymously(auth).catch((err) => {
+      try {
+          await signInAnonymously(auth);
+          // onAuthStateChanged will fire again with the new user
+      } catch (err) {
           console.error("Anonymous sign-in failed:", err);
           showError("Could not connect to voting service.");
-      });
+      }
     }
   });
 }
@@ -420,7 +508,7 @@ button.glow { animation: pink-green-glow 8s ease-in-out infinite; }
 <!-- ADMIN PANEL HTML HAS BEEN REMOVED -->
 
 <!-- LOGIN -->
-<!-- We start with the login screen visible. restoreVoteIfExists() will hide it if needed. -->
+<!-- Fix: Removed 'hidden' class. Login screen is now visible by default. -->
 <div id="login-screen" class="screen">
   <!-- RESPONSIVENESS FIX: Removed min-h-[440px], added h-auto, max-h-[95vh] and overflow-y-auto for safety on small screens -->
   <div class="glass-card flex flex-col justify-between items-center text-center p-8 w-11/12 max-w-md rounded-3xl h-auto max-h-[95vh] overflow-y-auto shadow-2xl my-4">
@@ -472,7 +560,7 @@ button.glow { animation: pink-green-glow 8s ease-in-out infinite; }
       <div class="performer-card bg-white/5 border border-white/10 p-4 rounded-xl cursor-pointer" data-vote-id="option5"><img src="https://i.imgur.com/k75mMUz.jpeg" class="w-full aspect-video object-cover rounded-lg mb-2" alt="Performer Sin Game" onerror="this.style.display='none'"><h4 class="text-lg font-semibold">Sin Game</h4></div>
       
       <!-- ***** TYPO FIX IS HERE ***** -->
-      <div class="performer-card bg-white/5 border border-white/10 p-4 rounded-xl cursor-pointer" data-vote-id="option6"><img src="https://i.imgur.com/3dJQFeX.jpeg" class="w-full aspect-video object-cover rounded-lg mb-2" alt="Performer Anonymity" onerror="this.style.display='none'"><h4 class="text-lg font-semibold">Anonymity</h4></div>
+      <div class="performer-card bg-white/5 border border-white/10 p-4 rounded-xl cursor-pointer" data-vote-id="option6"><img src="https." alt="Performer Anonymity" onerror="this.style.display='none'"><h4 class="text-lg font-semibold">Anonymity</h4></div>
     </div>
     <button id="submit-vote-btn" class="mt-6 w-full py-3 px-8 text-base bg-black border border-white/50 text-white rounded-xl transition disabled:opacity-40" disabled>Select a Performer to Vote</button>
   </div>
