@@ -119,7 +119,6 @@ button.glow{animation:pink-green-glow 6s ease-in-out infinite;}
   </div>
 </div>
 
-<!-- FIREBASE + LOGIC -->
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
@@ -127,13 +126,13 @@ import { getFirestore, doc, setDoc, getDoc, onSnapshot, runTransaction } from "h
 import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app-check.js";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBoYf1_IhILJ96Y9KMcwrVjHMFLT5YEKuQ",
-  authDomain: "lip-sync-2025.firebaseapp.com",
-  projectId: "lip-sync-2025",
-  storageBucket: "lip-sync-2025.appspot.com",
-  messagingSenderId: "118581305479",
-  appId: "1:118581305479:web:7a7335c1be6e816cc7d822",
-  measurementId: "G-NQ0GMG05Q2"
+  apiKey:"AIzaSyBoYf1_IhILJ96Y9KMcwrVjHMFLT5YEKuQ",
+  authDomain:"lip-sync-2025.firebaseapp.com",
+  projectId:"lip-sync-2025",
+  storageBucket:"lip-sync-2025.appspot.com",
+  messagingSenderId:"118581305479",
+  appId:"1:118581305479:web:7a7335c1be6e816cc7d822",
+  measurementId:"G-NQ0GMG05Q2"
 };
 
 let db,auth,userId,deviceHash=null;
@@ -178,6 +177,66 @@ function setScreen(id){document.querySelectorAll(".screen").forEach(el=>el.class
 function isInsideGeofence(lat,long){return geofences.some(g=>lat>=g.minLat&&lat<=g.maxLat&&long>=g.minLong&&long<=g.maxLong);}
 function showError(msg,type='location'){const el=(type==='location')?document.getElementById("location-error"):document.getElementById("student-id-error");if(!el)return;el.textContent=msg;el.classList.add("text-red-400","font-bold");}
 
+async function restoreVoteIfExists(){
+  if(!userId||!db)return;
+  try{
+    const voteSnap=await getDoc(doc(db,"lip_sync_2025_votes",userId));
+    if(voteSnap.exists()){
+      const v=voteSnap.data().voteId;
+      const p=performerData[v];
+      document.getElementById("confirmation-image").src=p.img;
+      document.getElementById("confirmation-message").innerHTML=`Your vote for <b>${p.name}</b> has been recorded.<br><br>Thank you for attending <b>Lip Sync: For Good!</b>`;
+      setScreen("confirmation-screen");return;
+    }
+    if(deviceHash){
+      const fSnap=await getDoc(doc(db,"voted_fingerprints",deviceHash));
+      if(fSnap.exists()){
+        const p=performerData[fSnap.data().voteId];
+        document.getElementById("confirmation-image").src=p.img;
+        document.getElementById("confirmation-message").innerHTML=`This device has already voted for <b>${p.name}</b>.<br><br>Thank you for attending <b>Lip Sync: For Good!</b>`;
+        setScreen("confirmation-screen");return;
+      }
+    }
+    setScreen("login-screen");
+  }catch{setScreen("login-screen");}
+}
+
+function handleCardSelection(e){
+  const c=e.target.closest(".performer-card");if(!c)return;
+  document.querySelectorAll(".performer-card").forEach(x=>x.classList.remove("selected"));
+  c.classList.add("selected");
+  selectedVoteId=c.dataset.voteId;
+  selectedVoteName=performerData[selectedVoteId].name;
+  selectedVoteImage=performerData[selectedVoteId].img;
+  const b=document.getElementById("submit-vote-btn");
+  b.disabled=false;b.textContent=`Submit Vote for ${selectedVoteName}`;b.classList.add("ready");
+}
+
+async function submitVote(voteId,btn){
+  if(!deviceHash||!userId)return;
+  if(!votingEnabled){showError("Voting is closed!");return;}
+  btn.disabled=true;btn.textContent="Submitting...";
+  try{
+    const vRef=doc(db,"lip_sync_2025_votes",userId);
+    const fRef=doc(db,"voted_fingerprints",deviceHash);
+    const data={voteId,createdAt:Date.now(),userId,deviceHash,authMethod,userAgent:navigator.userAgent};
+    await runTransaction(db,async t=>{
+      const fp=t.get(fRef);if((await fp).exists())throw new Error(`VOTED_ALREADY:${(await fp).data().voteId}`);
+      t.set(vRef,data);t.set(fRef,{createdAt:data.createdAt,userId,voteId});
+    });
+    document.getElementById("confirmation-image").src=selectedVoteImage;
+    document.getElementById("confirmation-message").innerHTML=`Your vote for <b>${selectedVoteName}</b> has been recorded.<br><br>Thank you for attending <b>Lip Sync: For Good!</b>`;
+    setScreen("confirmation-screen");
+  }catch(e){
+    if(e.message.includes("VOTED_ALREADY:")){
+      const p=performerData[e.message.split(":")[1]];
+      document.getElementById("confirmation-image").src=p.img;
+      document.getElementById("confirmation-message").innerHTML=`This device has already voted for <b>${p.name}</b>.<br><br>Thank you for attending <b>Lip Sync: For Good!</b>`;
+      setScreen("confirmation-screen");
+    }else showError("Error submitting vote. Please refresh.");
+  }
+}
+
 function handleLocationCheck(){
   if(!navigator.geolocation)return showError("Location not supported on this device.");
   navigator.geolocation.getCurrentPosition(
@@ -191,9 +250,8 @@ function handleLocationCheck(){
     err=>{
       const retry=document.getElementById("retry-location");
       retry.classList.remove("hidden");
-      if(err.code===1){ // Permission Denied
+      if(err.code===1){
         showError("Location access is blocked. Go to Settings → Safari → Location → Allow or Ask Next Time.",'location');
-        // fallback to student ID mode
         setTimeout(()=>{
           document.getElementById("location-mode").classList.add("hidden");
           document.getElementById("student-id-mode").classList.remove("hidden");
@@ -206,7 +264,62 @@ function handleLocationCheck(){
   );
 }
 
-document.getElementById("retry-location").addEventListener("click",handleLocationCheck);
+async function handleStudentIdCheck(){
+  const id=document.getElementById("student-id-input").value;
+  if(!id)return showError("Please enter a Student ID.",'student_id');
+  const btn=document.getElementById("student-id-btn");
+  btn.disabled=true;
+  const r=doc(db,"student_ids",id);const s=await getDoc(r);
+  if(!s.exists())showError("Student ID not found.",'student_id');
+  else if(s.data().hasVoted)showError("This Student ID has already voted.",'student_id');
+  else{authMethod='student_id';verifiedStudentId=id;setScreen("voting-screen");}
+  setTimeout(()=>btn.disabled=false,1500);
+}
+
+async function initializeAppLogic(){
+  if(appInitialized)return;appInitialized=true;
+  document.getElementById("location-btn").addEventListener("click",handleLocationCheck);
+  document.getElementById("student-id-btn").addEventListener("click",handleStudentIdCheck);
+  document.getElementById("show-id-mode").addEventListener("click",e=>{e.preventDefault();
+    document.getElementById("location-mode").classList.add("hidden");
+    document.getElementById("student-id-mode").classList.remove("hidden");});
+  document.getElementById("show-location-mode").addEventListener("click",e=>{e.preventDefault();
+    document.getElementById("student-id-mode").classList.add("hidden");
+    document.getElementById("location-mode").classList.remove("hidden");});
+  document.getElementById("performers-container").addEventListener("click",handleCardSelection);
+  document.getElementById("submit-vote-btn").addEventListener("click",()=>submitVote(selectedVoteId,document.getElementById("submit-vote-btn")));
+  document.getElementById("retry-location").addEventListener("click",handleLocationCheck);
+
+  const sRef=doc(db,"lip_sync_2025_settings","state");
+  onSnapshot(sRef,(s)=>{
+    if(s.exists()){
+      votingEnabled=s.data().enabled;
+      const header=document.getElementById("voting-header");
+      const sub=document.getElementById("voting-subtext");
+      const btn=document.getElementById("submit-vote-btn");
+      const container=document.getElementById("performers-container");
+      if(!votingEnabled){
+        header.textContent="Voting Is Now Closed!";
+        sub.textContent="Thank you for joining Lip Sync: For Good!";
+        const closedImage="https://i.imgur.com/kWKvSbS.jpeg";
+        container.innerHTML=`<div class='p-2'><img src='${closedImage}' class='vertical-image mx-auto' alt='Voting Closed'></div>`;
+        btn.disabled=true;btn.textContent="Voting Closed";
+      }else{
+        header.textContent="Vote For Your Favorite Lip Sync Team!";
+        sub.textContent="Each attendee may submit only one vote per device or Student ID.";
+        container.innerHTML=Object.entries(performerData).map(([id,{name,img}])=>
+          `<div class='performer-card bg-white/5 border border-white/10 p-4 rounded-xl cursor-pointer' data-vote-id='${id}'>
+             <img src='${img}' class='w-full aspect-video object-cover rounded-lg mb-2' alt='${name}'>
+             <h4 class='text-lg font-semibold'>${name}</h4>
+           </div>`).join('');
+        btn.disabled=true;btn.textContent="Select a Performer to Vote";
+      }
+    }
+  });
+
+  try{deviceHash=await generateDeviceHash();}catch{showError("Unable to verify device identity.");}
+  onAuthStateChanged(auth,async(u)=>{if(u){userId=u.uid;await restoreVoteIfExists();}else await signInAnonymously(auth);});
+}
 </script>
 </body>
 </html>
