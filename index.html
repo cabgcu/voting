@@ -282,10 +282,17 @@ async function initializeAppLogic(){
       const header=document.getElementById("voting-header");
       const sub=document.getElementById("voting-subtext");
       const btn=document.getElementById("submit-vote-btn");
+      const container=document.getElementById("performers-container");
       if(!votingEnabled){
         header.textContent="Voting Is Now Closed!";
         sub.textContent="Thank you for joining Lip Sync: For Good!";
-        document.getElementById("performers-container").innerHTML="";
+        const closedImage="https://i.imgur.com/kWKvSbS.jpeg";
+        container.innerHTML=`
+          <div class="performer-card bg-white/5 border border-white/10 p-4 rounded-xl">
+            <img src="${closedImage}" class="w-full aspect-video object-cover rounded-lg mb-2" alt="Voting Closed">
+            <h4 class="text-lg font-semibold text-white">Voting Has Ended</h4>
+            <p class="text-white/70 text-sm mt-1">Thank you for being part of Lip Sync: For Good!</p>
+          </div>`;
         btn.disabled=true;
         btn.textContent="Voting Closed";
       }else{
@@ -308,3 +315,4 @@ async function initializeAppLogic(){
 </script>
 </body>
 </html>
+
