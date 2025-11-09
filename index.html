@@ -83,7 +83,7 @@ button.glow{animation:pink-green-glow 6s ease-in-out infinite;}
           class="glow w-auto min-w-[180px] px-8 py-3 text-base text-white rounded-xl
           border border-white/50 shadow-lg transition mb-2">Begin Voting</button>
         <a id="retry-location"
-           class="block text-sm text-white/70 underline mb-5 hover:text-white/90 hidden">
+           class="block text-sm text-white/70 underline mb-5 hover:text-white/90 hidden" href="#">
            Try Again
         </a>
         <a href="#" id="show-id-mode"
@@ -191,41 +191,26 @@ function handleLocationCheck(){
   errEl.classList.remove("text-red-400","font-bold");
   errEl.textContent="Checking your location...";
 
-  navigator.permissions?.query({name:'geolocation'}).then(()=>{
-    navigator.geolocation.getCurrentPosition(
-      pos=>{
-        const{latitude,longitude}=pos.coords;
-        if(isInsideGeofence(latitude,longitude)){
-          sessionStorage.setItem("locationVerified","true");
-          authMethod='location';
-          setScreen("voting-screen");
-        }else showError("You must be at the GCU Arena to vote!");
-      },
-      err=>{
-        const retry=document.getElementById("retry-location");
-        retry.classList.remove("hidden");
-        if(err.code===1){
-          showError("Location access is blocked. Go to Settings → Safari → Location → Allow or Ask Next Time.","location");
-        }else{
-          showError("Location access is needed to vote. Please refresh!");
-        }
-      },
-      {timeout:10000,enableHighAccuracy:true}
-    );
-  }).catch(()=>{
-    navigator.geolocation.getCurrentPosition(
-      pos=>{
-        const{latitude,longitude}=pos.coords;
-        if(isInsideGeofence(latitude,longitude)){
-          sessionStorage.setItem("locationVerified","true");
-          authMethod='location';
-          setScreen("voting-screen");
-        }else showError("You must be at the GCU Arena to vote!");
-      },
-      ()=>showError("Unable to check location. Please refresh!"),
-      {timeout:10000}
-    );
-  });
+  navigator.geolocation.getCurrentPosition(
+    pos=>{
+      const{latitude,longitude}=pos.coords;
+      if(isInsideGeofence(latitude,longitude)){
+        sessionStorage.setItem("locationVerified","true");
+        authMethod='location';
+        setScreen("voting-screen");
+      }else showError("You must be at the GCU Arena to vote!");
+    },
+    err=>{
+      const retry=document.getElementById("retry-location");
+      retry.classList.remove("hidden");
+      if(err.code===1){
+        showError("Location access is blocked. Go to Settings → Safari → Location → Allow or Ask Next Time.","location");
+      }else{
+        showError("Location access is needed to vote. Please refresh!");
+      }
+    },
+    {timeout:10000,enableHighAccuracy:true}
+  );
 }
 
 async function handleStudentIdCheck(){
@@ -279,7 +264,7 @@ async function submitVote(voteId,btn){
 async function initializeAppLogic(){
   if(appInitialized)return;appInitialized=true;
   document.getElementById("location-btn").addEventListener("click",handleLocationCheck);
-  document.getElementById("retry-location").addEventListener("click",handleLocationCheck);
+  document.getElementById("retry-location").addEventListener("click",()=>location.reload());
   document.getElementById("student-id-btn").addEventListener("click",handleStudentIdCheck);
   document.getElementById("show-id-mode").addEventListener("click",e=>{e.preventDefault();
     document.getElementById("location-mode").classList.add("hidden");
@@ -318,8 +303,9 @@ async function initializeAppLogic(){
   });
 
   try{deviceHash=await generateDeviceHash();}catch{showError("Unable to verify device identity.");}
-  onAuthStateChanged(auth,async(u)=>{if(u){userId=u.uid;await restoreVoteIfExists();}else await signInAnonymously(auth);});
+  onAuthStateChanged(auth,async(u)=>{if(u){userId=u.uid;}else await signInAnonymously(auth);});
 }
 </script>
 </body>
 </html>
+
