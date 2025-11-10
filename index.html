@@ -186,11 +186,9 @@ function showError(msg,type='location'){const el=(type==='location')?document.ge
 
 function handleLocationCheck(){
   if (!navigator.geolocation) return showError("Location not supported on this device.");
-
   const errEl=document.getElementById("location-error");
   errEl.classList.remove("text-red-400","font-bold");
   errEl.textContent="Checking your location...";
-
   navigator.geolocation.getCurrentPosition(
     pos=>{
       const{latitude,longitude}=pos.coords;
@@ -248,17 +246,30 @@ async function submitVote(voteId,btn){
       const fp=t.get(fRef);if((await fp).exists())throw new Error(`VOTED_ALREADY:${(await fp).data().voteId}`);
       t.set(vRef,data);t.set(fRef,{createdAt:data.createdAt,userId,voteId});
     });
-    document.getElementById("confirmation-image").src=selectedVoteImage;
-    document.getElementById("confirmation-message").innerHTML=`Your vote for <b>${selectedVoteName}</b> has been recorded.<br><br>Thank you for attending <b>Lip Sync: For Good!</b>`;
-    setScreen("confirmation-screen");
+    showConfirmation(selectedVoteId);
   }catch(e){
     if(e.message.includes("VOTED_ALREADY:")){
-      const p=performerData[e.message.split(":")[1]];
-      document.getElementById("confirmation-image").src=p.img;
-      document.getElementById("confirmation-message").innerHTML=`This device has already voted for <b>${p.name}</b>.<br><br>Thank you for attending <b>Lip Sync: For Good!</b>`;
-      setScreen("confirmation-screen");
+      showConfirmation(e.message.split(":")[1]);
     }else showError("Error submitting vote. Please refresh.");
   }
+}
+
+function showConfirmation(voteId){
+  const team=performerData[voteId];
+  document.getElementById("confirmation-image").src=team.img;
+  document.getElementById("confirmation-message").innerHTML=`Your vote for <b>${team.name}</b> has been recorded.<br><br>Thank you for attending <b>Lip Sync: For Good!</b>`;
+  setScreen("confirmation-screen");
+}
+
+async function checkExistingVote(){
+  if(!deviceHash||!userId)return false;
+  const fRef=doc(db,"voted_fingerprints",deviceHash);
+  const vRef=doc(db,"lip_sync_2025_votes",userId);
+  const fDoc=await getDoc(fRef);
+  const vDoc=await getDoc(vRef);
+  if(fDoc.exists()){showConfirmation(fDoc.data().voteId);return true;}
+  if(vDoc.exists()){showConfirmation(vDoc.data().voteId);return true;}
+  return false;
 }
 
 async function initializeAppLogic(){
@@ -276,30 +287,26 @@ async function initializeAppLogic(){
   document.getElementById("submit-vote-btn").addEventListener("click",()=>submitVote(selectedVoteId,document.getElementById("submit-vote-btn")));
 
   const sRef=doc(db,"lip_sync_2025_settings","state");
-  onSnapshot(sRef,(s)=>{
-    if(s.exists()){
-      votingEnabled=s.data().enabled;
+  onSnapshot(sRef,async(s)=>{
+    if(!s.exists())return;
+    votingEnabled=s.data().enabled;
+
+    if(!votingEnabled){
+      setScreen("voting-screen");
       const header=document.getElementById("voting-header");
       const sub=document.getElementById("voting-subtext");
       const btn=document.getElementById("submit-vote-btn");
       const container=document.getElementById("performers-container");
-      if(!votingEnabled){
-        header.textContent="Voting Is Now Closed!";
-        sub.textContent="Thank you for joining Lip Sync: For Good!";
-        const closedImage="https://i.imgur.com/kWKvSbS.jpeg";
-        container.innerHTML=`<div class='p-2'><img src='${closedImage}' class='vertical-image mx-auto' alt='Voting Closed'></div>`;
-        btn.disabled=true;btn.textContent="Voting Closed";
-      }else{
-        header.textContent="Vote For Your Favorite Lip Sync Team!";
-        sub.textContent="Each attendee may submit only one vote per device or Student ID.";
-        container.innerHTML=Object.entries(performerData).map(([id,{name,img}])=>
-          `<div class='performer-card bg-white/5 border border-white/10 p-4 rounded-xl cursor-pointer' data-vote-id='${id}'>
-             <img src='${img}' class='w-full aspect-video object-cover rounded-lg mb-2' alt='${name}'>
-             <h4 class='text-lg font-semibold'>${name}</h4>
-           </div>`).join('');
-        btn.disabled=true;btn.textContent="Select a Performer to Vote";
-      }
+      header.textContent="Voting Is Now Closed!";
+      sub.textContent="Thank you for joining Lip Sync: For Good!";
+      const closedImage="https://i.imgur.com/kWKvSbS.jpeg";
+      container.innerHTML=`<div class='p-2'><img src='${closedImage}' class='vertical-image mx-auto' alt='Voting Closed'></div>`;
+      btn.disabled=true;btn.textContent="Voting Closed";
+      return;
     }
+
+    const alreadyVoted=await checkExistingVote();
+    if(!alreadyVoted)setScreen("login-screen");
   });
 
   try{deviceHash=await generateDeviceHash();}catch{showError("Unable to verify device identity.");}
@@ -308,4 +315,3 @@ async function initializeAppLogic(){
 </script>
 </body>
 </html>
-
