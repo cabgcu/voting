@@ -41,24 +41,20 @@ button.glow{animation:pink-green-glow 6s ease-in-out infinite;}
 .performer-card.selected{border:2px solid #22c55e;box-shadow:0 0 20px 3px rgba(34,197,94,.5);}
 #submit-vote-btn.ready{background:#22c55e!important;color:black!important;border:none!important;
   box-shadow:0 0 10px 2px rgba(34,197,94,.6);transition:all .3s ease;}
-.spinner{border:3px solid rgba(255,255,255,.15);border-top-color:#fff;border-radius:50%;
-  width:22px;height:22px;animation:spin .9s linear infinite;margin:0 auto;}
-@keyframes spin{to{transform:rotate(360deg);}}
 .vertical-image{width:100%;height:auto;border-radius:0.75rem;}
-@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
 </style>
 </head>
 
 <body>
 <video autoplay muted playsinline loop preload="auto" id="bg-video"
-  poster="https://images.weserv.nl/?url=i.imgur.com/EnuWGLA.png">
-  <source src="https://images.weserv.nl/?url=i.imgur.com/mAzP2S1.mp4" type="video/mp4">
+  poster="https://firebasestorage.googleapis.com/v0/b/lip-sync-2025.firebasestorage.app/o/EnuWGLA%20-%20Imgur.png?alt=media&token=c06a0ce1-d2e3-4cde-ac4a-a5ba89142b30">
+  <source src="https://firebasestorage.googleapis.com/v0/b/lip-sync-2025.firebasestorage.app/o/mAzP2S1%20-%20Imgur.mp4?alt=media&token=dc264640-a95e-4494-9d27-83ab5380a1a6" type="video/mp4">
 </video>
 
 <!-- LOGIN -->
 <div id="login-screen" class="screen">
   <div class="glass-card flex flex-col items-center text-center p-6 w-11/12 max-w-md shadow-2xl my-4">
-    <img class="w-full max-w-[240px] mb-4" src="https://images.weserv.nl/?url=i.imgur.com/EnuWGLA.png" alt="Lip Sync Header">
+    <img class="w-full max-w-[240px] mb-4" src="https://firebasestorage.googleapis.com/v0/b/lip-sync-2025.firebasestorage.app/o/EnuWGLA%20-%20Imgur.png?alt=media&token=c06a0ce1-d2e3-4cde-ac4a-a5ba89142b30" alt="Lip Sync Header">
     <div id="login-options" class="w-full flex-1">
       <div id="student-id-mode">
         <p id="student-id-error" class="text-white/70 text-base mb-6">Enter your Student ID to vote.</p>
@@ -103,7 +99,7 @@ button.glow{animation:pink-green-glow 6s ease-in-out infinite;}
 <!-- VOTING -->
 <div id="voting-screen" class="screen hidden">
   <div class="glass-card w-full max-w-md p-5 text-center shadow-2xl flex flex-col my-8">
-    <img class="w-full max-w-[180px] mx-auto mb-3" src="https://images.weserv.nl/?url=i.imgur.com/EnuWGLA.png" alt="Header">
+    <img class="w-full max-w-[180px] mx-auto mb-3" src="https://firebasestorage.googleapis.com/v0/b/lip-sync-2025.firebasestorage.app/o/EnuWGLA%20-%20Imgur.png?alt=media&token=c06a0ce1-d2e3-4cde-ac4a-a5ba89142b30" alt="Header">
     <h3 id="voting-header" class="text-xl font-semibold mb-2">Vote For Your Favorite Lip Sync Team!</h3>
     <p id="voting-subtext" class="text-white/70 text-sm mb-3">
       Each attendee may submit only one vote per device or Student ID.
@@ -147,19 +143,15 @@ let selectedVoteId = null, selectedVoteName = "", selectedVoteImage = "";
 let appInitialized = false, votingEnabled = true, authMethod = null, verifiedStudentId = null;
 
 const performerData = {
-  option1: {name: "Below", img: "https://images.weserv.nl/?url=i.imgur.com/DIyK2zX.jpeg"},
-  option2: {name: "Deliverance", img: "https://images.weserv.nl/?url=i.imgur.com/s7Unz9r.jpeg"},
-  option3: {name: "Mask Off", img: "https://images.weserv.nl/?url=i.imgur.com/x0BI8Mc.jpeg"},
-  option4: {name: "Metro Motion", img: "https://images.weserv.nl/?url=i.imgur.com/4rG47gL.jpeg"},
-  option5: {name: "Sin Game", img: "https://images.weserv.nl/?url=i.imgur.com/k75mMUz.jpeg"},
-  option6: {name: "Anonymity", img: "https://images.weserv.nl/?url=i.imgur.com/3dJQFeX.jpeg"}
+  option1: { name: "Below", img: "https://firebasestorage.googleapis.com/v0/b/lip-sync-2025.firebasestorage.app/o/DIyK2zX%20-%20Imgur.jpg?alt=media&token=556535f9-b60c-4fd7-a365-e9cef3f78ecd" },
+  option2: { name: "Deliverance", img: "https://firebasestorage.googleapis.com/v0/b/lip-sync-2025.firebasestorage.app/o/s7Unz9r%20-%20Imgur.jpg?alt=media&token=c8479380-c66d-4778-9ba2-36eb161a84de" },
+  option3: { name: "Mask Off", img: "https://firebasestorage.googleapis.com/v0/b/lip-sync-2025.firebasestorage.app/o/x0BI8Mc%20-%20Imgur.jpg?alt=media&token=f2d1ab93-aa73-412e-b00e-a1cdef71d9ee" },
+  option4: { name: "Metro Motion", img: "https://firebasestorage.googleapis.com/v0/b/lip-sync-2025.firebasestorage.app/o/4rG47gL%20-%20Imgur.jpg?alt=media&token=1262b438-78f8-4ca4-ba6e-69cb35a8edad" },
+  option5: { name: "Sin Game", img: "https://firebasestorage.googleapis.com/v0/b/lip-sync-2025.firebasestorage.app/o/k75mMUz%20-%20Imgur.jpg?alt=media&token=577a7b48-68e6-4171-ac7d-531ee35b850e" },
+  option6: { name: "Anonymity", img: "https://firebasestorage.googleapis.com/v0/b/lip-sync-2025.firebasestorage.app/o/3dJQFeX%20-%20Imgur.jpg?alt=media&token=dd2e317e-ac13-47eb-bd15-97f8491d4fc2" }
 };
 
-const geofences = [
-  {minLat:33.508268,maxLat:33.511748,minLong:-112.130755,maxLong:-112.126984},
-  {minLat:33.512279,maxLat:33.512623,minLong:-112.130699,maxLong:-112.130440},
-  {minLat:33.6786695,maxLat:33.6789695,minLong:-112.256548,maxLong:-112.256248}
-];
+const closedImage = "https://firebasestorage.googleapis.com/v0/b/lip-sync-2025.firebasestorage.app/o/kWKvSbS%20-%20Imgur.jpg?alt=media&token=f0e1f6a7-ddc9-46e1-9cef-7268031136c3";
 
 document.addEventListener("DOMContentLoaded",()=>initializeFirebase());
 
@@ -183,6 +175,12 @@ function setScreen(id){document.querySelectorAll(".screen").forEach(el=>el.class
   document.getElementById(id).classList.remove("hidden");}
 function isInsideGeofence(lat,long){return geofences.some(g=>lat>=g.minLat&&lat<=g.maxLat&&long>=g.minLong&&long<=g.maxLong);}
 function showError(msg,type='location'){const el=(type==='location')?document.getElementById("location-error"):document.getElementById("student-id-error");if(!el)return;el.textContent=msg;el.classList.add("text-red-400","font-bold");}
+
+const geofences = [
+  {minLat:33.508268,maxLat:33.511748,minLong:-112.130755,maxLong:-112.126984},
+  {minLat:33.512279,maxLat:33.512623,minLong:-112.130699,maxLong:-112.130440},
+  {minLat:33.6786695,maxLat:33.6789695,minLong:-112.256548,maxLong:-112.256248}
+];
 
 function handleLocationCheck(){
   if (!navigator.geolocation) return showError("Location not supported on this device.");
@@ -241,7 +239,6 @@ async function submitVote(voteId,btn){
   try{
     const vRef=doc(db,"lip_sync_2025_votes",userId);
     const fRef=doc(db,"voted_fingerprints",deviceHash);
-
     const data={
       voteId,
       createdAt:Date.now(),
@@ -251,13 +248,11 @@ async function submitVote(voteId,btn){
       verifiedStudentId: verifiedStudentId || null,
       userAgent:navigator.userAgent
     };
-
     await runTransaction(db,async t=>{
       const fp=t.get(fRef);
       if((await fp).exists())throw new Error(`VOTED_ALREADY:${(await fp).data().voteId}`);
       t.set(vRef,data);
       t.set(fRef,{createdAt:data.createdAt,userId,voteId});
-
       if(verifiedStudentId){
         const sidRef = doc(db,"student_ids",verifiedStudentId);
         t.update(sidRef,{hasVoted:true});
@@ -312,7 +307,6 @@ async function initializeAppLogic(){
       onSnapshot(sRef,async(s)=>{
         if(!s.exists())return;
         votingEnabled=s.data().enabled;
-
         const header=document.getElementById("voting-header");
         const sub=document.getElementById("voting-subtext");
         const btn=document.getElementById("submit-vote-btn");
@@ -322,7 +316,6 @@ async function initializeAppLogic(){
           setScreen("voting-screen");
           header.textContent="Voting Is Now Closed!";
           sub.textContent="Thank you for joining Lip Sync: For Good!";
-          const closedImage="https://images.weserv.nl/?url=i.imgur.com/kWKvSbS.jpeg";
           container.innerHTML=`<div class='p-2'><img src='${closedImage}' class='vertical-image mx-auto' alt='Voting Closed'></div>`;
           btn.disabled=true;btn.textContent="Voting Closed";
           return;
