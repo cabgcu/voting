@@ -286,31 +286,46 @@ async function initializeAppLogic(){
   document.getElementById("performers-container").addEventListener("click",handleCardSelection);
   document.getElementById("submit-vote-btn").addEventListener("click",()=>submitVote(selectedVoteId,document.getElementById("submit-vote-btn")));
 
-  const sRef=doc(db,"lip_sync_2025_settings","state");
-  onSnapshot(sRef,async(s)=>{
-    if(!s.exists())return;
-    votingEnabled=s.data().enabled;
-
-    if(!votingEnabled){
-      setScreen("voting-screen");
-      const header=document.getElementById("voting-header");
-      const sub=document.getElementById("voting-subtext");
-      const btn=document.getElementById("submit-vote-btn");
-      const container=document.getElementById("performers-container");
-      header.textContent="Voting Is Now Closed!";
-      sub.textContent="Thank you for joining Lip Sync: For Good!";
-      const closedImage="https://i.imgur.com/kWKvSbS.jpeg";
-      container.innerHTML=`<div class='p-2'><img src='${closedImage}' class='vertical-image mx-auto' alt='Voting Closed'></div>`;
-      btn.disabled=true;btn.textContent="Voting Closed";
-      return;
-    }
-
-    const alreadyVoted=await checkExistingVote();
-    if(!alreadyVoted)setScreen("login-screen");
-  });
-
   try{deviceHash=await generateDeviceHash();}catch{showError("Unable to verify device identity.");}
-  onAuthStateChanged(auth,async(u)=>{if(u){userId=u.uid;}else await signInAnonymously(auth);});
+
+  onAuthStateChanged(auth,async(u)=>{
+    if(u){
+      userId=u.uid;
+      const sRef=doc(db,"lip_sync_2025_settings","state");
+      onSnapshot(sRef,async(s)=>{
+        if(!s.exists())return;
+        votingEnabled=s.data().enabled;
+
+        const header=document.getElementById("voting-header");
+        const sub=document.getElementById("voting-subtext");
+        const btn=document.getElementById("submit-vote-btn");
+        const container=document.getElementById("performers-container");
+
+        if(!votingEnabled){
+          setScreen("voting-screen");
+          header.textContent="Voting Is Now Closed!";
+          sub.textContent="Thank you for joining Lip Sync: For Good!";
+          const closedImage="https://i.imgur.com/kWKvSbS.jpeg";
+          container.innerHTML=`<div class='p-2'><img src='${closedImage}' class='vertical-image mx-auto' alt='Voting Closed'></div>`;
+          btn.disabled=true;btn.textContent="Voting Closed";
+          return;
+        }
+
+        // ✅ When voting is OPEN, always render performers
+        header.textContent="Vote For Your Favorite Lip Sync Team!";
+        sub.textContent="Each attendee may submit only one vote per device or Student ID.";
+        container.innerHTML=Object.entries(performerData).map(([id,{name,img}])=>
+          `<div class='performer-card bg-white/5 border border-white/10 p-4 rounded-xl cursor-pointer' data-vote-id='${id}'>
+             <img src='${img}' class='w-full aspect-video object-cover rounded-lg mb-2' alt='${name}'>
+             <h4 class='text-lg font-semibold'>${name}</h4>
+           </div>`).join('');
+        btn.disabled=true;btn.textContent="Select a Performer to Vote";
+
+        const alreadyVoted=await checkExistingVote();
+        if(!alreadyVoted)setScreen("login-screen");
+      });
+    }else await signInAnonymously(auth);
+  });
 }
 </script>
 </body>
