@@ -42,6 +42,22 @@ button.glow{animation:pink-green-glow 6s ease-in-out infinite;}
 #submit-vote-btn.ready{background:#22c55e!important;color:black!important;border:none!important;
   box-shadow:0 0 10px 2px rgba(34,197,94,.6);transition:all .3s ease;}
 .vertical-image{width:100%;height:auto;border-radius:0.75rem;}
+
+/* ---------- Low Power Mode / Transparency Fallback ---------- */
+@media (prefers-reduced-transparency: reduce) {
+  #bg-video {
+    display: none !important;
+  }
+  body {
+    background: radial-gradient(circle at 50% 20%, #111 0%, #000 100%) !important;
+  }
+  .glass-card {
+    background: rgba(0,0,0,0.85) !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+    backdrop-filter: none !important;
+    box-shadow: 0 0 30px rgba(0,0,0,0.6);
+  }
+}
 </style>
 </head>
 
